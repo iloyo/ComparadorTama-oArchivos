@@ -66,14 +66,13 @@ namespace WindowsFormsApp1
             Debug.WriteLine($"Ruta Después: {txtFilesAfter.Text}");
 
             // Obtener archivos de cada carpeta
-            var filesBefore = Directory.GetFiles(txtFilesBefore.Text, "*.*", SearchOption.AllDirectories)
+            var filesBefore = Directory.GetFiles(txtFilesBefore.Text, "*.csv", SearchOption.AllDirectories)
                                        .Select(f => new FileInfo(f))
                                        .ToList();
 
-            var filesAfter = Directory.GetFiles(txtFilesAfter.Text, "*.*", SearchOption.AllDirectories)
+            var filesAfter = Directory.GetFiles(txtFilesAfter.Text, "*.csv", SearchOption.AllDirectories)
                                       .Select(f => new FileInfo(f))
                                       .ToList();
-
 
             Debug.WriteLine($"Archivos Antes: {filesBefore.Count}");
             Debug.WriteLine($"Archivos Después: {filesAfter.Count}");
@@ -81,43 +80,82 @@ namespace WindowsFormsApp1
             StringBuilder csvContent = new StringBuilder();
 
             // Agregar encabezado
-            csvContent.AppendLine("Archivo Antes,Tamaño Antes, LineasAntes,Archivo Después,Tamaño Después, LineasDespués");
+            csvContent.AppendLine("Archivo Antes,Tamaño Antes,Lineas Antes,Archivo Después,Tamaño Después,Lineas Después,Coincidencias de Global Interaction ID");
 
             // Mezclar ambas listas en una sola lista continua
-            //int maxCount = Math.Max(filesBefore.Count, filesAfter.Count);
-            //for (int i = 0; i < maxCount; i++)
-            //{
-            //    string fileBeforeName = i < filesBefore.Count ? filesBefore[i].Name : "";
-            //    string fileBeforeSize = i < filesBefore.Count ? filesBefore[i].Length.ToString() : "0";
-            //    string fileAfterName = i < filesAfter.Count ? filesAfter[i].Name : "";
-            //    string fileAfterSize = i < filesAfter.Count ? filesAfter[i].Length.ToString() : "0";
-
-            //    // Obtener número de líneas por archivo
-            //   int LineasAntes = i < filesBefore.Count ? File.ReadAllLines(filesBefore[i].FullName).Count():0;
-            //   int LineasDespues = i < filesBefore.Count ? File.ReadAllLines(filesAfter[i].FullName).Count():0;
-
-            //    csvContent.AppendLine($"{fileBeforeName},{fileBeforeSize},{LineasAntes},{fileAfterName},{fileAfterSize},{LineasDespues}");
-            //}
             int maxCount = Math.Max(filesBefore.Count, filesAfter.Count);
             for (int i = 0; i < maxCount; i++)
             {
                 string fileBeforeName = i < filesBefore.Count ? filesBefore[i].Name : "";
                 string fileBeforeSize = i < filesBefore.Count ? filesBefore[i].Length.ToString() : "0";
-                string fileAfterName = i < filesAfter.Count ? filesAfter[i].Name : "";
-                string fileAfterSize = i < filesAfter.Count ? filesAfter[i].Length.ToString() : "0";
+                int lineasAntes = i < filesBefore.Count ? File.ReadAllLines(filesBefore[i].FullName).Length : 0;
 
-                // Obtener número de líneas por archivo
-                int LineasAntes = i < filesBefore.Count ? File.ReadAllLines(filesBefore[i].FullName).Length : 0;
-                int LineasDespues = i < filesAfter.Count ? File.ReadAllLines(filesAfter[i].FullName).Length : 0;
+                // Obtener los IDs de Global Interaction del archivo antes
+                HashSet<string> globalIdsBefore = i < filesBefore.Count ? GetGlobalInteractionIds(filesBefore[i]) : new HashSet<string>();
 
-                csvContent.AppendLine($"{fileBeforeName},{fileBeforeSize},{LineasAntes},{fileAfterName},{fileAfterSize},{LineasDespues}");
+                // Obtener el archivo correspondiente en la carpeta después
+                string fileAfterName = "";
+                string fileAfterSize = "0";
+                int lineasDespues = 0;
+                HashSet<string> globalIdsAfter = new HashSet<string>();
+
+                if (i < filesAfter.Count)
+                {
+                    fileAfterName = filesAfter[i].Name;
+                    fileAfterSize = filesAfter[i].Length.ToString();
+                    lineasDespues = File.ReadAllLines(filesAfter[i].FullName).Length;
+
+                    // Obtener los IDs de Global Interaction del archivo después
+                    globalIdsAfter = GetGlobalInteractionIds(filesAfter[i]);
+                }
+
+                // Contar coincidencias de Global Interaction IDs
+                int coincidencias = globalIdsBefore.Intersect(globalIdsAfter).Count();
+
+                csvContent.AppendLine($"{fileBeforeName},{fileBeforeSize},{lineasAntes},{fileAfterName},{fileAfterSize},{lineasDespues},{coincidencias} Coincidencias");
             }
+
             // Guardar el CSV
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string csvFilePath = Path.Combine(txtReportFolder.Text, $"Validacion_{timestamp}.csv");
             File.WriteAllText(csvFilePath, csvContent.ToString(), Encoding.UTF8);
 
             MessageBox.Show($"Reporte generado en: {csvFilePath}", "Éxito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private HashSet<string> GetGlobalInteractionIds(FileInfo file)
+        {
+            HashSet<string> globalIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase); 
+
+            if (file.Exists)
+            {
+                var lines = File.ReadAllLines(file.FullName);
+                if (lines.Length > 0)
+                {
+                    // Obtener el índice de la columna "Global Interaction ID"
+                    var headers = lines[0].Split(',');
+                    int idIndex = Array.IndexOf(headers, "Global Interaction ID");
+
+                    if (idIndex >= 0)
+                    {
+                        // Leer los IDs de las líneas restantes
+                        for (int i = 1; i < lines.Length; i++)
+                        {
+                            var values = lines[i].Split(',');
+                            if (values.Length > idIndex)
+                            {
+                                string id = values[idIndex].Trim();
+                                if (!string.IsNullOrEmpty(id))
+                                {
+                                    globalIds.Add(id); // Agregar el ID a la colección
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return globalIds;
         }
         private void label1_Click(object sender, EventArgs e)
         {
@@ -130,9 +168,3 @@ namespace WindowsFormsApp1
         }
     }
 }
-
-
-
-
-
-
